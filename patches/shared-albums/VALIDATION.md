@@ -101,5 +101,5 @@ Der aktuelle automatisierte Nachweis für v3.3.5 steht am Ende dieser Datei; man
 
 - Nutzer: „Apk funktioniert wie erwartet“. Kein vollständiger manueller Prüfkatalog bestätigt.
 - Feature auf identischer Basis v3.3.5 als Code-Commit in den Fork übernommen.
-- Anzeigename für den nächsten Build: Immich Shared. Paketkennung und erwarteter Signierer bleiben identisch.
+- Anzeigename für den nächsten Build: Immich2. Paketkennung und erwarteter Signierer bleiben identisch.
 - Ergebnisse des neuen Fork-Builds sind gesondert zu erfassen.

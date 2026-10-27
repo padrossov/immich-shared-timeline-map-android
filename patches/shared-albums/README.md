@@ -8,8 +8,8 @@ Der Feature-Code ist im Fork-Branch `shared-albums` bereits angewendet und commi
 - `REQUIREMENTS.md`, `CODE_MAP.md`: Anforderungen und Codestellen.
 - `PORTING.md`: Übertragung auf neue Versionen.
 - `VALIDATION.md`: historische Build-Nachweise und manuelle Prüffälle.
-- `release.json`: Metadaten der früheren, vom Nutzer erfolgreich getesteten APK namens Immich Shared; kein Nachweis des neuen Fork-Builds.
+- `release.json`: Metadaten der früheren, vom Nutzer erfolgreich getesteten APK namens Immich Shared; kein Nachweis des neuen Immich2-Builds.
 - `verify_sql.py`: 18 SQL-Regressionstests.
 - `build.sh`: Codegenerierung, Analyse, Flutter-Tests und ARM64-Release-Build.
 
-Anzeigename des neuen Builds: **Immich Shared**. Paketkennung bleibt `app.alextran.immich.sharedalbums`.
+Anzeigename des neuen Builds: **Immich2**. Paketkennung bleibt `app.alextran.immich.sharedalbums`.
