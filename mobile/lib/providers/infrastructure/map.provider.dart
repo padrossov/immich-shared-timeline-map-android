@@ -2,6 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/domain/services/map.service.dart';
 import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
+import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/timeline.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 
@@ -17,7 +18,7 @@ final mapServiceProvider = Provider<MapService>(
         : [user.id];
 
     final mapFactory = MapFactory(mapRepository: ref.watch(driftProvider).mapRepository);
-    final mapService = mapFactory.remote(users, ref.watch(mapStateProvider).toOptions());
+    final mapService = mapFactory.remote(users, ref.watch(sharedAlbumMapOptionsProvider));
     return mapService;
   },
   // Empty dependencies to inform the framework that this provider

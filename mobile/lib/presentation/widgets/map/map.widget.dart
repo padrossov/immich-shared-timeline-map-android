@@ -15,6 +15,7 @@ import 'package:immich_mobile/presentation/widgets/bottom_sheet/base_bottom_shee
 import 'package:immich_mobile/presentation/widgets/bottom_sheet/map_bottom_sheet.widget.dart';
 import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
 import 'package:immich_mobile/presentation/widgets/map/map_utils.dart';
+import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
 import 'package:immich_mobile/providers/routes.provider.dart';
 import 'package:immich_mobile/utils/async_mutex.dart';
 import 'package:immich_mobile/utils/debounce.dart';
@@ -181,6 +182,11 @@ class _MapViewState extends ConsumerState<MapView> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(sharedAlbumMapOptionsProvider, (_, _) => _onEvent(null));
+    ref.listen(sharedAlbumMapRevisionProvider, (_, _) {
+      ref.invalidate(mapMarkerProvider);
+      _onEvent(null);
+    });
     ref.listen<bool>(isAssetViewerOpenProvider, (previous, current) {
       if (previous == true && !current) {
         _debouncer.run(() => setBounds(forceReload: true));

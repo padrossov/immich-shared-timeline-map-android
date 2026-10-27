@@ -11,6 +11,7 @@ import 'package:immich_mobile/presentation/widgets/bottom_sheet/base_bottom_shee
 import 'package:immich_mobile/presentation/widgets/bottom_sheet/general_bottom_sheet.widget.dart';
 import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
 import 'package:immich_mobile/presentation/widgets/timeline/timeline.widget.dart';
+import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/timeline.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 
@@ -55,9 +56,9 @@ class _ScopedMapTimeline extends StatelessWidget {
           final optionsController = StreamController<TimelineMapOptions>.broadcast();
           ref.onDispose(optionsController.close);
 
-          var currentOptions = ref.read(mapStateProvider).toOptions();
+          var currentOptions = ref.read(sharedAlbumMapOptionsProvider);
 
-          ref.listen(mapStateProvider.select((state) => state.toOptions()), (_, newOptions) {
+          ref.listen(sharedAlbumMapOptionsProvider, (_, newOptions) {
             currentOptions = newOptions;
             optionsController.add(newOptions);
           });

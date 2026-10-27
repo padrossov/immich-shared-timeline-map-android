@@ -7,6 +7,7 @@ part 'store.model.freezed.dart';
 /// Defines the data type for each value
 enum StoreKey<T> {
   version<int>._(0),
+  sharedAlbumSelections<String>._(20001),
   currentUser<UserDto>._(2),
   deviceId<String>._(4),
   serverUrl<String>._(10),

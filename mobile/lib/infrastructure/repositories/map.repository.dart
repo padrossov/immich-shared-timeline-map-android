@@ -6,6 +6,7 @@ import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/domain/models/map.model.dart';
 import 'package:immich_mobile/domain/services/map.service.dart';
 import 'package:immich_mobile/infrastructure/repositories/map.repository.drift.dart';
+import 'package:immich_mobile/infrastructure/repositories/shared_album_queries.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 @DriftAccessor()
@@ -14,39 +15,41 @@ class MapRepository extends DatabaseAccessor<Drift> with $MapRepositoryMixin {
 
   Drift get _db => attachedDatabase;
 
-  MapQuery remote(List<String> ownerIds, TimelineMapOptions options) => _mapQueryBuilder(
-    assetFilter: (row) {
-      Expression<bool> condition =
-          row.deletedAt.isNull() &
-          row.ownerId.isIn(ownerIds) &
-          _db.remoteAssetEntity.visibility.isIn([
-            AssetVisibility.timeline.index,
-            if (options.includeArchived) AssetVisibility.archive.index,
-          ]);
+  MapQuery remote(List<String> ownerIds, TimelineMapOptions options) => options.sharedAlbumIds.isNotEmpty
+      ? (markerSource: (bounds) => SharedAlbumQueries(_db).markers(ownerIds, options, bounds))
+      : _mapQueryBuilder(
+          assetFilter: (row) {
+            Expression<bool> condition =
+                row.deletedAt.isNull() &
+                row.ownerId.isIn(ownerIds) &
+                _db.remoteAssetEntity.visibility.isIn([
+                  AssetVisibility.timeline.index,
+                  if (options.includeArchived) AssetVisibility.archive.index,
+                ]);
 
-      if (options.onlyFavorites) {
-        condition = condition & _db.remoteAssetEntity.isFavorite.equals(true);
-      }
+            if (options.onlyFavorites) {
+              condition = condition & _db.remoteAssetEntity.isFavorite.equals(true);
+            }
 
-      final timeRange = options.timeRange;
-      final hasCustomRange = timeRange.from != null || timeRange.to != null;
+            final timeRange = options.timeRange;
+            final hasCustomRange = timeRange.from != null || timeRange.to != null;
 
-      if (hasCustomRange) {
-        if (timeRange.from != null) {
-          condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(timeRange.from!);
-        }
+            if (hasCustomRange) {
+              if (timeRange.from != null) {
+                condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(timeRange.from!);
+              }
 
-        if (timeRange.to != null) {
-          condition = condition & _db.remoteAssetEntity.createdAt.isSmallerOrEqualValue(timeRange.to!);
-        }
-      } else if (options.relativeDays > 0) {
-        final cutoffDate = DateTime.now().toUtc().subtract(Duration(days: options.relativeDays));
-        condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(cutoffDate);
-      }
+              if (timeRange.to != null) {
+                condition = condition & _db.remoteAssetEntity.createdAt.isSmallerOrEqualValue(timeRange.to!);
+              }
+            } else if (options.relativeDays > 0) {
+              final cutoffDate = DateTime.now().toUtc().subtract(Duration(days: options.relativeDays));
+              condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(cutoffDate);
+            }
 
-      return condition;
-    },
-  );
+            return condition;
+          },
+        );
 
   MapQuery _mapQueryBuilder({Expression<bool> Function($RemoteAssetEntityTable row)? assetFilter}) {
     return (markerSource: (bounds) => _watchMapMarker(assetFilter: assetFilter, bounds: bounds));

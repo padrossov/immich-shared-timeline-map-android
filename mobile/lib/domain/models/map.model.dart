@@ -18,6 +18,8 @@ abstract class TimelineMapOptions with _$TimelineMapOptions {
     @Default(false) bool includeArchived,
     @Default(false) bool withPartners,
     @Default(0) int relativeDays,
+    @Default(<String>[]) List<String> sharedAlbumIds,
+    @Default('') String sharedAlbumUserId,
 
     @Default(TimeRange()) TimeRange timeRange,
   }) = _TimelineMapOptions;

@@ -4,6 +4,7 @@ import 'package:immich_mobile/domain/services/timeline.service.dart';
 import 'package:immich_mobile/presentation/widgets/timeline/timeline.state.dart';
 import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/settings.provider.dart';
+import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
 
 final timelineArgsProvider = Provider.autoDispose<TimelineArgs>(
@@ -13,7 +14,14 @@ final timelineArgsProvider = Provider.autoDispose<TimelineArgs>(
 final timelineServiceProvider = Provider<TimelineService>(
   (ref) {
     final timelineUsers = ref.watch(timelineUsersProvider).valueOrNull ?? [];
-    final timelineService = ref.watch(timelineFactoryProvider).main(timelineUsers);
+    final albumIds = ref.watch(sharedAlbumSelectionProvider(SharedAlbumView.photos));
+    final timelineService = ref
+        .watch(timelineFactoryProvider)
+        .main(
+          timelineUsers,
+          sharedAlbumIds: albumIds.toList()..sort(),
+          sharedAlbumUserId: ref.watch(currentUserProvider)?.id ?? '',
+        );
     ref.onDispose(timelineService.dispose);
     return timelineService;
   },

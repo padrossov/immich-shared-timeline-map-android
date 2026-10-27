@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:immich_mobile/extensions/build_context_extensions.dart';
+import 'package:immich_mobile/presentation/widgets/album/shared_album_filter_button.dart';
 import 'package:immich_mobile/presentation/widgets/map/map.widget.dart';
 import 'package:immich_mobile/presentation/widgets/map/map_settings_sheet.dart';
+import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 @RoutePage()
@@ -43,6 +45,14 @@ class MapPage extends StatelessWidget {
                 shadowColor: Colors.black26,
                 elevation: 4,
               ),
+            ),
+          ),
+          const Positioned(
+            right: 76,
+            top: 70,
+            child: Material(
+              shape: CircleBorder(),
+              child: SharedAlbumFilterButton(view: SharedAlbumView.map),
             ),
           ),
           Positioned(

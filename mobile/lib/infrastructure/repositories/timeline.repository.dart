@@ -12,6 +12,7 @@ import 'package:immich_mobile/domain/models/map.model.dart';
 import 'package:immich_mobile/domain/models/timeline.model.dart';
 import 'package:immich_mobile/domain/services/timeline.service.dart';
 import 'package:immich_mobile/infrastructure/repositories/map.repository.dart';
+import 'package:immich_mobile/infrastructure/repositories/shared_album_queries.dart';
 import 'package:immich_mobile/infrastructure/repositories/timeline.repository.drift.dart';
 import 'package:stream_transform/stream_transform.dart';
 
@@ -33,11 +34,18 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
         .map((users) => users..add(userId));
   }
 
-  TimelineQuery main(List<String> userIds, GroupAssetsBy groupBy) => (
-    bucketSource: () => _watchMainBucket(userIds, groupBy: groupBy),
-    assetSource: (offset, count) => _getMainBucketAssets(userIds, offset: offset, count: count),
-    origin: TimelineOrigin.main,
-  );
+  TimelineQuery main(
+    List<String> userIds,
+    GroupAssetsBy groupBy, {
+    List<String> sharedAlbumIds = const [],
+    String sharedAlbumUserId = '',
+  }) => sharedAlbumIds.isNotEmpty
+      ? SharedAlbumQueries(_db).main(userIds, sharedAlbumUserId, sharedAlbumIds, groupBy)
+      : (
+          bucketSource: () => _watchMainBucket(userIds, groupBy: groupBy),
+          assetSource: (offset, count) => _getMainBucketAssets(userIds, offset: offset, count: count),
+          origin: TimelineOrigin.main,
+        );
 
   Stream<List<Bucket>> _watchMainBucket(List<String> userIds, {GroupAssetsBy groupBy = GroupAssetsBy.day}) {
     if (groupBy == GroupAssetsBy.none) {
@@ -506,7 +514,8 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
           // Any error would kill the stream for all options; make sure the stream stays alive
           (options) => _watchMapBucket(userIds, options, groupBy: groupBy).handleError((_) {}),
         ),
-    assetSource: (offset, count) => _getMapBucketAssets(userIds, currentOptions(), offset: offset, count: count),
+    assetSource: (offset, count) =>
+        _getMapBucketAssets(userIds, currentOptions(), offset: offset, count: count, groupBy: groupBy),
     origin: TimelineOrigin.map,
   );
 
@@ -515,6 +524,9 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
     TimelineMapOptions options, {
     GroupAssetsBy groupBy = GroupAssetsBy.day,
   }) {
+    if (options.sharedAlbumIds.isNotEmpty) {
+      return SharedAlbumQueries(_db).map(userId, options, groupBy).bucketSource();
+    }
     if (groupBy == GroupAssetsBy.none) {
       // TODO: Support GroupAssetsBy.none
       throw UnsupportedError("GroupAssetsBy.none is not supported for _watchMapBucket");
@@ -578,7 +590,11 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
     TimelineMapOptions options, {
     required int offset,
     required int count,
+    GroupAssetsBy groupBy = GroupAssetsBy.day,
   }) {
+    if (options.sharedAlbumIds.isNotEmpty) {
+      return SharedAlbumQueries(_db).map(userId, options, groupBy).assetSource(offset, count);
+    }
     final query =
         _db.remoteAssetEntity.select().join([
             innerJoin(
