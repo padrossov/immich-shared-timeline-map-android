@@ -40,11 +40,8 @@ GRADLE
   if [[ "${CI:-}" == true && ! -s android/key.jks ]]; then
     development_keystore="$HOME/.android/debug.keystore"
     if [[ ! -s "$development_keystore" ]]; then
-      mkdir -p "$HOME/.android"
-      keytool -genkeypair -noprompt -keystore "$development_keystore" \
-        -storepass android -keypass android -alias androiddebugkey \
-        -keyalg RSA -keysize 2048 -validity 10000 \
-        -dname "CN=Immich Shared Development,O=Personal Development,C=DE"
+      echo "Existing signing key required; configure ANDROID_KEYSTORE_BASE64 in the fork workflow." >&2
+      exit 1
     fi
     install -m 600 "$development_keystore" android/key.jks
     export ALIAS=androiddebugkey ANDROID_KEY_PASSWORD=android ANDROID_STORE_PASSWORD=android
