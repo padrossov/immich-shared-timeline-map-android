@@ -18,7 +18,7 @@
   ],
   "sql_checks_passed": 18,
   "android_application_id": "app.alextran.immich.sharedalbums",
-  "android_display_name": "Immich2",
+  "android_display_name": "Immich Shared",
   "signing": "explicit CI development keystore, cached; caller-provided release keystore takes precedence",
   "fork": "https://github.com/padrossov/immich-shared-timeline-map-android",
   "feature_branch": "shared-albums"
