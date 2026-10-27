@@ -1,3 +1,7 @@
+> **Android-Fork:** [APK herunterladen](https://github.com/padrossov/immich-shared-timeline-map-android/releases/latest) · [Build & Release starten](https://github.com/padrossov/immich-shared-timeline-map-android/actions/workflows/immich2-release.yml) · [Anleitung](https://github.com/padrossov/immich-shared-timeline-map-android/blob/shared-albums/README-IMMICH2.md)
+>
+> App-Quellcode: Branch `shared-albums`. Zum Bauen in Actions `source_ref: shared-albums` verwenden. Einmalig muss der vorhandene Signierungsschlüssel als `ANDROID_KEYSTORE_BASE64` im Fork hinterlegt werden.
+
 <p align="center"> 
   <br/>
   <a href="https://opensource.org/license/agpl-v3"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg?color=3F51B5&style=for-the-badge&label=License&logoColor=000000&labelColor=ececec" alt="License: AGPLv3"></a>
