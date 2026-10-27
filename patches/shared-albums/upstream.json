@@ -3,7 +3,7 @@
   "tag": "v3.3.5",
   "commit": "8303cb117e197c700332b33b61b45314c9cc5bb4",
   "flutter": "3.47.2",
-  "status": "fork_migrated_renamed_build_pending",
+  "status": "fork_release_built_and_signature_verified",
   "implemented": true,
   "validated_versions": [
     {
@@ -14,6 +14,14 @@
       "flutter_tests": 15,
       "sql_tests": 18,
       "device_test": "user_reported_working"
+    },
+    {
+      "version": "3.3.5",
+      "fork_commit": "642e50ecf5361afb08fbc3155dff58eaee9c993f",
+      "run_id": 40525890651,
+      "flutter_tests": 15,
+      "sql_tests": 18,
+      "device_test": "not_run_for_new_apk"
     }
   ],
   "sql_checks_passed": 18,

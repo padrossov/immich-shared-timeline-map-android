@@ -22,4 +22,8 @@ Download nach erfolgreichem Lauf: **Actions → Build Immich2 release APK → Ar
 
 ## Prüfstatus
 
-Die vorherige APK bestand Flutter-Analyse, 15 Flutter-Tests, 18 SQL-Prüfungen und Signaturprüfung. Der Nutzer bestätigte am 27.10.2026, dass sie wie erwartet funktioniert. Das bestätigt keinen vollständigen Durchlauf der manuellen Prüfliste. Der umbenannte Fork-Build wird gesondert geprüft; `release.json` dokumentiert bis dahin ausschließlich die frühere APK.
+Die vorherige APK bestand Flutter-Analyse, 15 Flutter-Tests, 18 SQL-Prüfungen und Signaturprüfung. Der Nutzer bestätigte am 27.10.2026, dass sie wie erwartet funktioniert. Das bestätigt keinen vollständigen Durchlauf der manuellen Prüfliste. 
+
+## Erfolgreicher Fork-Build am 27.10.2026
+
+[Release-APK herunterladen](https://github.com/padrossov/ImmichApk/actions/runs/40525890651/artifacts/12744179868). Quelle: `642e50ecf5361afb08fbc3155dff58eaee9c993f`. Anzeigename **Immich**, eigene Paketkennung beibehalten. Flutter-Analyse, 15 Flutter-Tests, 18 SQL-Prüfungen und Release-Build bestanden. APK nach Download gegen SHA-256 geprüft; bisheriges Signierungszertifikat unverändert. Alle Metadaten: `patches/shared-albums/release.json`. Ein Gerätetest dieser neuen APK steht aus.

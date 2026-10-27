@@ -103,3 +103,14 @@ Der aktuelle automatisierte Nachweis für v3.3.5 steht am Ende dieser Datei; man
 - Feature auf identischer Basis v3.3.5 als Code-Commit in den Fork übernommen.
 - Anzeigename für den nächsten Build: Immich. Paketkennung und erwarteter Signierer bleiben identisch.
 - Ergebnisse des neuen Fork-Builds sind gesondert zu erfassen.
+
+## Erfolgreicher Fork-Release-Build mit Anzeigename Immich
+
+- Quellcode: `642e50ecf5361afb08fbc3155dff58eaee9c993f` in `padrossov/immich-shared-timeline-map-android`.
+- Workflow: https://github.com/padrossov/ImmichApk/actions/runs/40525890651 — erfolgreich.
+- Codegenerierung und Flutter-Analyse ohne Probleme; 15 Flutter-Tests und 18 SQL-Prüfungen bestanden.
+- ARM64-Release-APK: 100180261 Bytes.
+- SHA-256: `2a51d271b3ecfe3c258bfb9554c939d26a544d494ded0c9688399bdef4de01b5`, nach Download bestätigt.
+- APK-Signatur v2 gültig; bisheriges Zertifikat `154199b39a2bbdc1d3bba4996b430639b23035005f960d007accb469aa7afc79` unverändert.
+- Getrennte Paketkennung `app.alextran.immich.sharedalbums`, Anzeigename **Immich**.
+- Neuer Gerätetest steht aus. Der Nutzer bestätigte zuvor die Funktion der ursprünglichen Feature-APK.
