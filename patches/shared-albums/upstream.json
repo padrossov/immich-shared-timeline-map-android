@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/immich-app/immich",
+  "tag": "v3.3.5",
+  "commit": "8303cb117e197c700332b33b61b45314c9cc5bb4",
+  "flutter": "3.47.2",
+  "status": "fork_migrated_renamed_build_pending",
+  "implemented": true,
+  "validated_versions": [
+    {
+      "version": "3.3.5",
+      "upstream_commit": "8303cb117e197c700332b33b61b45314c9cc5bb4",
+      "patch_project_commit": "c318e615b9746049a6b9941681f52220680dd84b",
+      "run_id": 40510940616,
+      "flutter_tests": 15,
+      "sql_tests": 18,
+      "device_test": "user_reported_working"
+    }
+  ],
+  "sql_checks_passed": 18,
+  "android_application_id": "app.alextran.immich.sharedalbums",
+  "android_display_name": "Immich2",
+  "signing": "explicit CI development keystore, cached; caller-provided release keystore takes precedence",
+  "fork": "https://github.com/padrossov/immich-shared-timeline-map-android",
+  "feature_branch": "shared-albums"
+}

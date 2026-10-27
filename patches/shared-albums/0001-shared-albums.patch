@@ -1,0 +1,1187 @@
+diff --git a/mobile/android/app/build.gradle b/mobile/android/app/build.gradle
+index 7b3217e..2668db8 100644
+--- a/mobile/android/app/build.gradle
++++ b/mobile/android/app/build.gradle
+@@ -69,6 +69,12 @@ android {
+       signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
+       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+ 
++      if (System.getenv("IMMICH_SHARED_ALBUMS_BUILD") == "1") {
++        applicationIdSuffix ".sharedalbums"
++        versionNameSuffix "-sharedalbums"
++        resValue "string", "app_name", "Immich2"
++      }
++
+       def prNumber = System.getenv("PR_NUMBER")
+       if (prNumber) {
+         applicationIdSuffix ".pr${prNumber}"
+diff --git a/mobile/lib/data/db/main/table/remote/asset.dart b/mobile/lib/data/db/main/table/remote/asset.dart
+index addd4cb..9576f5c 100644
+--- a/mobile/lib/data/db/main/table/remote/asset.dart
++++ b/mobile/lib/data/db/main/table/remote/asset.dart
+@@ -57,7 +57,7 @@ class RemoteAssetEntity extends Table with DriftDefaultsMixin, AssetEntityMixin
+ }
+ 
+ extension RemoteAssetEntityDataDomainEx on RemoteAssetEntityData {
+-  RemoteAsset toDto({String? localId}) => RemoteAsset(
++  RemoteAsset toDto({String? localId, bool includeStack = true}) => RemoteAsset(
+     id: id,
+     name: name,
+     ownerId: ownerId,
+@@ -74,7 +74,7 @@ extension RemoteAssetEntityDataDomainEx on RemoteAssetEntityData {
+     visibility: visibility,
+     livePhotoVideoId: livePhotoVideoId,
+     localId: localId,
+-    stackId: stackId,
++    stackId: includeStack ? stackId : null,
+     isEdited: isEdited,
+     deletedAt: deletedAt,
+   );
+diff --git a/mobile/lib/domain/models/map.model.dart b/mobile/lib/domain/models/map.model.dart
+index 9da4245..d6afbb7 100644
+--- a/mobile/lib/domain/models/map.model.dart
++++ b/mobile/lib/domain/models/map.model.dart
+@@ -18,6 +18,8 @@ abstract class TimelineMapOptions with _$TimelineMapOptions {
+     @Default(false) bool includeArchived,
+     @Default(false) bool withPartners,
+     @Default(0) int relativeDays,
++    @Default(<String>[]) List<String> sharedAlbumIds,
++    @Default('') String sharedAlbumUserId,
+ 
+     @Default(TimeRange()) TimeRange timeRange,
+   }) = _TimelineMapOptions;
+diff --git a/mobile/lib/domain/models/shared_album_preferences.dart b/mobile/lib/domain/models/shared_album_preferences.dart
+new file mode 100644
+index 0000000..6df42ed
+--- /dev/null
++++ b/mobile/lib/domain/models/shared_album_preferences.dart
+@@ -0,0 +1,27 @@
++import 'dart:convert';
++
++/// The store value contains independent selections for each server, account
++/// and view. Selecting all stores the currently listed IDs, not future albums.
++class SharedAlbumPreferences {
++  static String key(String server, String user, String view) => jsonEncode([server, user, view]);
++
++  static Map<String, dynamic> _decode(String? value) {
++    if (value == null) {
++      return {};
++    }
++    try {
++      final decoded = jsonDecode(value);
++      return decoded is Map<String, dynamic> ? decoded : {};
++    } on FormatException {
++      return {};
++    }
++  }
++
++  static Set<String> read(String? value, String key) {
++    final ids = _decode(value)[key];
++    return Set.unmodifiable(ids is List ? ids.whereType<String>() : <String>[]);
++  }
++
++  static String write(String? value, String key, Set<String> ids) =>
++      jsonEncode({..._decode(value), key: ids.toList()..sort()});
++}
+diff --git a/mobile/lib/domain/models/store.model.dart b/mobile/lib/domain/models/store.model.dart
+index d662dd3..56c3e34 100644
+--- a/mobile/lib/domain/models/store.model.dart
++++ b/mobile/lib/domain/models/store.model.dart
+@@ -7,6 +7,7 @@ part 'store.model.freezed.dart';
+ /// Defines the data type for each value
+ enum StoreKey<T> {
+   version<int>._(0),
++  sharedAlbumSelections<String>._(20001),
+   currentUser<UserDto>._(2),
+   deviceId<String>._(4),
+   serverUrl<String>._(10),
+diff --git a/mobile/lib/domain/services/timeline.service.dart b/mobile/lib/domain/services/timeline.service.dart
+index 4c77e80..0c865b9 100644
+--- a/mobile/lib/domain/services/timeline.service.dart
++++ b/mobile/lib/domain/services/timeline.service.dart
+@@ -50,7 +50,18 @@ class TimelineFactory {
+     return group == GroupAssetsBy.auto ? GroupAssetsBy.day : group;
+   }
+ 
+-  TimelineService main(List<String> timelineUsers) => TimelineService(_timelineRepository.main(timelineUsers, groupBy));
++  TimelineService main(
++    List<String> timelineUsers, {
++    List<String> sharedAlbumIds = const [],
++    String sharedAlbumUserId = '',
++  }) => TimelineService(
++    _timelineRepository.main(
++      timelineUsers,
++      groupBy,
++      sharedAlbumIds: sharedAlbumIds,
++      sharedAlbumUserId: sharedAlbumUserId,
++    ),
++  );
+ 
+   TimelineService localAlbum({required String albumId}) =>
+       TimelineService(_timelineRepository.localAlbum(albumId, groupBy));
+diff --git a/mobile/lib/infrastructure/repositories/map.repository.dart b/mobile/lib/infrastructure/repositories/map.repository.dart
+index e046b9a..1e6476b 100644
+--- a/mobile/lib/infrastructure/repositories/map.repository.dart
++++ b/mobile/lib/infrastructure/repositories/map.repository.dart
+@@ -6,6 +6,7 @@ import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+ import 'package:immich_mobile/domain/models/map.model.dart';
+ import 'package:immich_mobile/domain/services/map.service.dart';
+ import 'package:immich_mobile/infrastructure/repositories/map.repository.drift.dart';
++import 'package:immich_mobile/infrastructure/repositories/shared_album_queries.dart';
+ import 'package:maplibre_gl/maplibre_gl.dart';
+ 
+ @DriftAccessor()
+@@ -14,39 +15,41 @@ class MapRepository extends DatabaseAccessor<Drift> with $MapRepositoryMixin {
+ 
+   Drift get _db => attachedDatabase;
+ 
+-  MapQuery remote(List<String> ownerIds, TimelineMapOptions options) => _mapQueryBuilder(
+-    assetFilter: (row) {
+-      Expression<bool> condition =
+-          row.deletedAt.isNull() &
+-          row.ownerId.isIn(ownerIds) &
+-          _db.remoteAssetEntity.visibility.isIn([
+-            AssetVisibility.timeline.index,
+-            if (options.includeArchived) AssetVisibility.archive.index,
+-          ]);
+-
+-      if (options.onlyFavorites) {
+-        condition = condition & _db.remoteAssetEntity.isFavorite.equals(true);
+-      }
+-
+-      final timeRange = options.timeRange;
+-      final hasCustomRange = timeRange.from != null || timeRange.to != null;
+-
+-      if (hasCustomRange) {
+-        if (timeRange.from != null) {
+-          condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(timeRange.from!);
+-        }
+-
+-        if (timeRange.to != null) {
+-          condition = condition & _db.remoteAssetEntity.createdAt.isSmallerOrEqualValue(timeRange.to!);
+-        }
+-      } else if (options.relativeDays > 0) {
+-        final cutoffDate = DateTime.now().toUtc().subtract(Duration(days: options.relativeDays));
+-        condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(cutoffDate);
+-      }
+-
+-      return condition;
+-    },
+-  );
++  MapQuery remote(List<String> ownerIds, TimelineMapOptions options) => options.sharedAlbumIds.isNotEmpty
++      ? (markerSource: (bounds) => SharedAlbumQueries(_db).markers(ownerIds, options, bounds))
++      : _mapQueryBuilder(
++          assetFilter: (row) {
++            Expression<bool> condition =
++                row.deletedAt.isNull() &
++                row.ownerId.isIn(ownerIds) &
++                _db.remoteAssetEntity.visibility.isIn([
++                  AssetVisibility.timeline.index,
++                  if (options.includeArchived) AssetVisibility.archive.index,
++                ]);
++
++            if (options.onlyFavorites) {
++              condition = condition & _db.remoteAssetEntity.isFavorite.equals(true);
++            }
++
++            final timeRange = options.timeRange;
++            final hasCustomRange = timeRange.from != null || timeRange.to != null;
++
++            if (hasCustomRange) {
++              if (timeRange.from != null) {
++                condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(timeRange.from!);
++              }
++
++              if (timeRange.to != null) {
++                condition = condition & _db.remoteAssetEntity.createdAt.isSmallerOrEqualValue(timeRange.to!);
++              }
++            } else if (options.relativeDays > 0) {
++              final cutoffDate = DateTime.now().toUtc().subtract(Duration(days: options.relativeDays));
++              condition = condition & _db.remoteAssetEntity.createdAt.isBiggerOrEqualValue(cutoffDate);
++            }
++
++            return condition;
++          },
++        );
+ 
+   MapQuery _mapQueryBuilder({Expression<bool> Function($RemoteAssetEntityTable row)? assetFilter}) {
+     return (markerSource: (bounds) => _watchMapMarker(assetFilter: assetFilter, bounds: bounds));
+diff --git a/mobile/lib/infrastructure/repositories/shared_album_queries.dart b/mobile/lib/infrastructure/repositories/shared_album_queries.dart
+new file mode 100644
+index 0000000..d4a6f68
+--- /dev/null
++++ b/mobile/lib/infrastructure/repositories/shared_album_queries.dart
+@@ -0,0 +1,185 @@
++import 'package:drift/drift.dart';
++import 'package:immich_mobile/data/db/main/database.dart';
++import 'package:immich_mobile/data/db/main/table/local/asset.dart';
++import 'package:immich_mobile/data/db/main/table/remote/asset.dart';
++import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
++import 'package:immich_mobile/domain/models/map.model.dart';
++import 'package:immich_mobile/domain/models/timeline.model.dart';
++import 'package:immich_mobile/domain/services/timeline.service.dart';
++import 'package:immich_mobile/infrastructure/repositories/shared_album_sql.dart';
++import 'package:intl/intl.dart';
++import 'package:maplibre_gl/maplibre_gl.dart';
++
++/// Extra queries are used only while at least one shared album is selected.
++/// The stock queries remain the fallback when the selection is empty.
++class SharedAlbumQueries {
++  final Drift db;
++  const SharedAlbumQueries(this.db);
++
++  Selectable<QueryRow> _select(SharedAlbumSql query, String suffix, [List<Object> arguments = const []]) =>
++      db.customSelect(
++        '${query.sql} $suffix',
++        variables: [...query.arguments, ...arguments]
++            .map(
++              (value) => switch (value) {
++                final String v => Variable<String>(v),
++                final int v => Variable<int>(v),
++                final double v => Variable<double>(v),
++                _ => throw ArgumentError.value(value, 'SQL parameter'),
++              },
++            )
++            .toList(),
++        readsFrom: {
++          db.remoteAssetEntity,
++          db.remoteExifEntity,
++          db.remoteAlbumEntity,
++          db.remoteAlbumAssetEntity,
++          db.remoteAlbumUserEntity,
++          db.stackEntity,
++          db.localAssetEntity,
++          db.localAlbumEntity,
++          db.localAlbumAssetEntity,
++        },
++      );
++
++  Stream<List<({String id, String name})>> watchAlbums(String userId) => db
++      .customSelect(
++        SharedAlbumSql.accessibleAlbums,
++        variables: [Variable(userId), Variable(userId)],
++        readsFrom: {db.remoteAlbumEntity, db.remoteAlbumUserEntity},
++      )
++      .watch()
++      .map((rows) => rows.map((row) => (id: row.read<String>('id'), name: row.read<String>('name'))).toList());
++
++  TimelineQuery main(List<String> userIds, String userId, List<String> albumIds, GroupAssetsBy groupBy) {
++    final query = SharedAlbumSql.candidates(
++      ownerIds: userIds,
++      albumIds: albumIds,
++      currentUserId: userId,
++    ).mainRows(userIds);
++    return (
++      origin: TimelineOrigin.main,
++      bucketSource: () => _buckets(query, 'visible', groupBy),
++      assetSource: (offset, count) => _assets(query, 'visible', offset, count, groupBy, userIds),
++    );
++  }
++
++  SharedAlbumSql _map(List<String> userIds, TimelineMapOptions options, {LatLngBounds? bounds}) {
++    final area = bounds ?? options.bounds;
++    final range = options.timeRange;
++    final hasRange = range.from != null || range.to != null;
++    return SharedAlbumSql.candidates(
++      ownerIds: userIds,
++      albumIds: options.sharedAlbumIds,
++      currentUserId: options.sharedAlbumUserId,
++      map: true,
++      includeArchived: options.includeArchived,
++      onlyFavorites: options.onlyFavorites,
++      south: area.southwest.latitude,
++      north: area.northeast.latitude,
++      west: area.southwest.longitude,
++      east: area.northeast.longitude,
++      from: hasRange
++          ? range.from
++          : options.relativeDays > 0
++          ? DateTime.now().toUtc().subtract(Duration(days: options.relativeDays))
++          : null,
++      to: hasRange ? range.to : null,
++    );
++  }
++
++  TimelineQuery map(List<String> userIds, TimelineMapOptions options, GroupAssetsBy groupBy) {
++    final query = _map(userIds, options);
++    return (
++      origin: TimelineOrigin.map,
++      bucketSource: () => _buckets(query, 'visible_remote', groupBy),
++      assetSource: (offset, count) => _assets(query, 'visible_remote', offset, count, groupBy, userIds),
++    );
++  }
++
++  Future<List<Marker>> markers(List<String> userIds, TimelineMapOptions options, LatLngBounds? bounds) async {
++    final query = _map(
++      userIds,
++      options,
++      bounds: bounds ?? LatLngBounds(southwest: const LatLng(-90, -180), northeast: const LatLng(90, 180)),
++    );
++    final rows = await _select(
++      query,
++      'SELECT id, latitude, longitude FROM visible_remote ORDER BY id LIMIT 10000',
++    ).get();
++    return rows
++        .map(
++          (row) => Marker(
++            assetId: row.read<String>('id'),
++            location: LatLng(row.read<double>('latitude'), row.read<double>('longitude')),
++          ),
++        )
++        .toList();
++  }
++
++  String _date(GroupAssetsBy groupBy) {
++    final format = groupBy == GroupAssetsBy.month ? '%Y-%m' : '%Y-%m-%d';
++    return "COALESCE(strftime('$format', local_date_time), strftime('$format', created_at, 'localtime'))";
++  }
++
++  Stream<List<Bucket>> _buckets(SharedAlbumSql query, String table, GroupAssetsBy groupBy) {
++    if (groupBy == GroupAssetsBy.none) {
++      return _select(query, 'SELECT count(*) AS asset_count FROM $table').watch().map((rows) {
++        final count = rows.single.read<int>('asset_count');
++        return count == 0 ? <Bucket>[] : [Bucket(assetCount: count)];
++      });
++    }
++    return _select(query, '''SELECT ${_date(groupBy)} AS bucket_date, count(*) AS asset_count
++      FROM $table GROUP BY bucket_date ORDER BY bucket_date DESC''').watch().map(
++      (rows) => rows
++          .map(
++            (row) => TimeBucket(
++              date: DateFormat(
++                groupBy == GroupAssetsBy.month ? 'y-M' : 'y-M-d',
++                'en',
++              ).parse(row.read<String>('bucket_date')),
++              assetCount: row.read<int>('asset_count'),
++            ),
++          )
++          .toList(),
++    );
++  }
++
++  Future<List<BaseAsset>> _assets(
++    SharedAlbumSql query,
++    String table,
++    int offset,
++    int count,
++    GroupAssetsBy groupBy,
++    List<String> stackOwnerIds,
++  ) async {
++    // Resolve IDs and their DTOs in one snapshot so a concurrent sync cannot
++    // remove an entity between the page query and the DTO lookup.
++    return db.transaction(() async {
++      final main = table == 'visible';
++      final columns = main ? 'remote_id, local_id' : 'id AS remote_id, NULL AS local_id';
++      final stableId = main ? 'COALESCE(remote_id, local_id)' : 'id';
++      final order = groupBy == GroupAssetsBy.none ? '' : '${_date(groupBy)} DESC,';
++      final rows = await _select(
++        query,
++        'SELECT $columns FROM $table ORDER BY $order created_at DESC, $stableId LIMIT ? OFFSET ?',
++        [count, offset],
++      ).get();
++      final remoteIds = rows.map((row) => row.readNullable<String>('remote_id')).nonNulls.toList();
++      final localIds = rows.map((row) => row.readNullable<String>('local_id')).nonNulls.toList();
++      final remote = await (db.remoteAssetEntity.select()..where((a) => a.id.isIn(remoteIds))).get();
++      final local = await (db.localAssetEntity.select()..where((a) => a.id.isIn(localIds))).get();
++      final remoteById = {for (final asset in remote) asset.id: asset};
++      final localById = {for (final asset in local) asset.id: asset};
++      return rows.map((row) {
++        final remoteId = row.readNullable<String>('remote_id');
++        final localId = row.readNullable<String>('local_id');
++        if (remoteId == null) {
++          return localById[localId]!.toDto();
++        }
++        final asset = remoteById[remoteId]!;
++        return asset.toDto(localId: localId, includeStack: stackOwnerIds.contains(asset.ownerId));
++      }).toList();
++    });
++  }
++}
+diff --git a/mobile/lib/infrastructure/repositories/shared_album_sql.dart b/mobile/lib/infrastructure/repositories/shared_album_sql.dart
+new file mode 100644
+index 0000000..f8fe156
+--- /dev/null
++++ b/mobile/lib/infrastructure/repositories/shared_album_sql.dart
+@@ -0,0 +1,129 @@
++/// SQL shared by the extra timeline and map queries. All user values are bound.
++/// Filtering precedes checksum ranking, counting and pagination.
++class SharedAlbumSql {
++  final String sql;
++  final List<Object> arguments;
++
++  const SharedAlbumSql(this.sql, this.arguments);
++
++  static const accessibleAlbums = '''
++SELECT album.id, album.name
++FROM remote_album_entity album
++WHERE EXISTS (
++  SELECT 1 FROM remote_album_user_entity mine
++  WHERE mine.album_id = album.id AND mine.user_id = ?
++) AND EXISTS (
++  SELECT 1 FROM remote_album_user_entity other
++  WHERE other.album_id = album.id AND other.user_id <> ?
++)
++ORDER BY album.name COLLATE NOCASE, album.id
++''';
++
++  factory SharedAlbumSql.candidates({
++    required List<String> ownerIds,
++    required List<String> albumIds,
++    required String currentUserId,
++    bool map = false,
++    bool includeArchived = false,
++    bool onlyFavorites = false,
++    double south = -90,
++    double north = 90,
++    double west = -180,
++    double east = 180,
++    DateTime? from,
++    DateTime? to,
++  }) {
++    final arguments = <Object>[];
++    String bind(Object value) {
++      arguments.add(value);
++      return '?';
++    }
++
++    String inList(List<String> values) => values.isEmpty ? '(NULL)' : '(${values.map(bind).join(',')})';
++
++    final owners = inList(ownerIds);
++    final albums = inList(albumIds);
++    final mine = bind(currentUserId);
++    final other = bind(currentUserId);
++    final filters = <String>[
++      'a.deleted_at IS NULL',
++      'a.visibility IN (${map && includeArchived ? '0,2' : '0'})',
++      '''(a.owner_id IN $owners OR EXISTS (
++        SELECT 1 FROM remote_album_asset_entity membership
++        JOIN remote_album_entity album ON album.id = membership.album_id
++        WHERE membership.asset_id = a.id AND membership.album_id IN $albums
++        AND EXISTS (SELECT 1 FROM remote_album_user_entity u
++          WHERE u.album_id = album.id AND u.user_id = $mine)
++        AND EXISTS (SELECT 1 FROM remote_album_user_entity u
++          WHERE u.album_id = album.id AND u.user_id <> $other)
++      ))''',
++    ];
++    if (map) {
++      filters.add('e.latitude BETWEEN ${bind(south)} AND ${bind(north)}');
++      if (west <= east) {
++        filters.add('e.longitude BETWEEN ${bind(west)} AND ${bind(east)}');
++      } else {
++        filters.add('(e.longitude >= ${bind(west)} OR e.longitude <= ${bind(east)})');
++      }
++      if (onlyFavorites) {
++        filters.add('a.is_favorite = 1');
++      }
++      if (from != null) {
++        filters.add('julianday(a.created_at) >= julianday(${bind(from.toUtc().toIso8601String())})');
++      }
++      if (to != null) {
++        filters.add('julianday(a.created_at) <= julianday(${bind(to.toUtc().toIso8601String())})');
++      }
++    } else {
++      // Album-only sharing does not synchronize the owner's private stacks.
++      // Treat these shared photos individually, as the album view does. Keep
++      // the stock primary-only rule for the existing owner/partner timeline.
++      final albumOnlyOwner = ownerIds.isEmpty ? '1' : 'a.owner_id NOT IN ${inList(ownerIds)}';
++      filters.add('''($albumOnlyOwner OR a.stack_id IS NULL OR EXISTS (
++        SELECT 1 FROM stack_entity stack WHERE stack.id = a.stack_id AND stack.primary_asset_id = a.id
++      ))''');
++    }
++    final preferredOwner = bind(currentUserId);
++    return SharedAlbumSql('''
++WITH eligible AS (
++  SELECT a.*${map ? ', e.latitude, e.longitude' : ''}
++  FROM remote_asset_entity a
++  ${map ? 'JOIN remote_exif_entity e ON e.asset_id = a.id' : ''}
++  WHERE ${filters.join(' AND ')}
++), ranked AS (
++  SELECT eligible.*, ROW_NUMBER() OVER (
++    PARTITION BY checksum, CASE WHEN checksum = '' THEN id ELSE '' END
++    ORDER BY (owner_id = $preferredOwner) DESC, id
++  ) AS checksum_rank FROM eligible
++), visible_remote AS (
++  SELECT * FROM ranked WHERE checksum_rank = 1
++)
++''', arguments);
++  }
++
++  SharedAlbumSql mainRows(List<String> ownerIds) {
++    final owners = ownerIds.isEmpty ? '(NULL)' : '(${List.filled(ownerIds.length, '?').join(',')})';
++    return SharedAlbumSql(
++      '''$sql, visible AS (
++  SELECT a.id AS remote_id,
++    (SELECT l.id FROM local_asset_entity l WHERE l.checksum = a.checksum ORDER BY l.id LIMIT 1) AS local_id,
++    a.created_at, a.local_date_time
++  FROM visible_remote a
++  UNION ALL
++  SELECT NULL AS remote_id, l.id AS local_id, l.created_at, NULL AS local_date_time
++  FROM local_asset_entity l
++  WHERE NOT EXISTS (SELECT 1 FROM remote_asset_entity a
++    WHERE a.checksum = l.checksum AND a.owner_id IN $owners)
++  AND NOT EXISTS (SELECT 1 FROM visible_remote a WHERE a.checksum = l.checksum)
++  AND EXISTS (SELECT 1 FROM local_album_asset_entity laa
++    JOIN local_album_entity la ON la.id = laa.album_id
++    WHERE laa.asset_id = l.id AND la.backup_selection = 0)
++  AND NOT EXISTS (SELECT 1 FROM local_album_asset_entity laa
++    JOIN local_album_entity la ON la.id = laa.album_id
++    WHERE laa.asset_id = l.id AND la.backup_selection = 2)
++)
++''',
++      [...arguments, ...ownerIds],
++    );
++  }
++}
+diff --git a/mobile/lib/infrastructure/repositories/timeline.repository.dart b/mobile/lib/infrastructure/repositories/timeline.repository.dart
+index 821b2ed..96bb464 100644
+--- a/mobile/lib/infrastructure/repositories/timeline.repository.dart
++++ b/mobile/lib/infrastructure/repositories/timeline.repository.dart
+@@ -12,6 +12,7 @@ import 'package:immich_mobile/domain/models/map.model.dart';
+ import 'package:immich_mobile/domain/models/timeline.model.dart';
+ import 'package:immich_mobile/domain/services/timeline.service.dart';
+ import 'package:immich_mobile/infrastructure/repositories/map.repository.dart';
++import 'package:immich_mobile/infrastructure/repositories/shared_album_queries.dart';
+ import 'package:immich_mobile/infrastructure/repositories/timeline.repository.drift.dart';
+ import 'package:stream_transform/stream_transform.dart';
+ 
+@@ -33,11 +34,18 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
+         .map((users) => users..add(userId));
+   }
+ 
+-  TimelineQuery main(List<String> userIds, GroupAssetsBy groupBy) => (
+-    bucketSource: () => _watchMainBucket(userIds, groupBy: groupBy),
+-    assetSource: (offset, count) => _getMainBucketAssets(userIds, offset: offset, count: count),
+-    origin: TimelineOrigin.main,
+-  );
++  TimelineQuery main(
++    List<String> userIds,
++    GroupAssetsBy groupBy, {
++    List<String> sharedAlbumIds = const [],
++    String sharedAlbumUserId = '',
++  }) => sharedAlbumIds.isNotEmpty
++      ? SharedAlbumQueries(_db).main(userIds, sharedAlbumUserId, sharedAlbumIds, groupBy)
++      : (
++          bucketSource: () => _watchMainBucket(userIds, groupBy: groupBy),
++          assetSource: (offset, count) => _getMainBucketAssets(userIds, offset: offset, count: count),
++          origin: TimelineOrigin.main,
++        );
+ 
+   Stream<List<Bucket>> _watchMainBucket(List<String> userIds, {GroupAssetsBy groupBy = GroupAssetsBy.day}) {
+     if (groupBy == GroupAssetsBy.none) {
+@@ -506,7 +514,8 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
+           // Any error would kill the stream for all options; make sure the stream stays alive
+           (options) => _watchMapBucket(userIds, options, groupBy: groupBy).handleError((_) {}),
+         ),
+-    assetSource: (offset, count) => _getMapBucketAssets(userIds, currentOptions(), offset: offset, count: count),
++    assetSource: (offset, count) =>
++        _getMapBucketAssets(userIds, currentOptions(), offset: offset, count: count, groupBy: groupBy),
+     origin: TimelineOrigin.map,
+   );
+ 
+@@ -515,6 +524,9 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
+     TimelineMapOptions options, {
+     GroupAssetsBy groupBy = GroupAssetsBy.day,
+   }) {
++    if (options.sharedAlbumIds.isNotEmpty) {
++      return SharedAlbumQueries(_db).map(userId, options, groupBy).bucketSource();
++    }
+     if (groupBy == GroupAssetsBy.none) {
+       // TODO: Support GroupAssetsBy.none
+       throw UnsupportedError("GroupAssetsBy.none is not supported for _watchMapBucket");
+@@ -578,7 +590,11 @@ class TimelineRepository extends DatabaseAccessor<Drift> with $TimelineRepositor
+     TimelineMapOptions options, {
+     required int offset,
+     required int count,
++    GroupAssetsBy groupBy = GroupAssetsBy.day,
+   }) {
++    if (options.sharedAlbumIds.isNotEmpty) {
++      return SharedAlbumQueries(_db).map(userId, options, groupBy).assetSource(offset, count);
++    }
+     final query =
+         _db.remoteAssetEntity.select().join([
+             innerJoin(
+diff --git a/mobile/lib/presentation/pages/dev/main_timeline.page.dart b/mobile/lib/presentation/pages/dev/main_timeline.page.dart
+index 8b1a6c6..1e85e7e 100644
+--- a/mobile/lib/presentation/pages/dev/main_timeline.page.dart
++++ b/mobile/lib/presentation/pages/dev/main_timeline.page.dart
+@@ -1,11 +1,14 @@
+ import 'package:auto_route/auto_route.dart';
+ import 'package:flutter/material.dart';
+ import 'package:hooks_riverpod/hooks_riverpod.dart';
++import 'package:immich_mobile/presentation/widgets/album/shared_album_filter_button.dart';
+ import 'package:immich_mobile/presentation/widgets/feature_message/feature_message_dialog.widget.dart';
+ import 'package:immich_mobile/presentation/widgets/memory/memory_lane.widget.dart';
+ import 'package:immich_mobile/presentation/widgets/timeline/timeline.widget.dart';
+ import 'package:immich_mobile/providers/feature_message.provider.dart';
+ import 'package:immich_mobile/providers/infrastructure/memory.provider.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
++import 'package:immich_mobile/widgets/common/immich_sliver_app_bar.dart';
+ 
+ @RoutePage()
+ class MainTimelinePage extends ConsumerStatefulWidget {
+@@ -41,6 +44,12 @@ class _MainTimelinePageState extends ConsumerState<MainTimelinePage> {
+   Widget build(BuildContext context) {
+     final hasMemories = ref.watch(memoryLaneProvider.select((state) => state.value?.isNotEmpty ?? false));
+     return Timeline(
++      appBar: const ImmichSliverAppBar(
++        floating: true,
++        pinned: false,
++        snap: false,
++        actions: [SharedAlbumFilterButton(view: SharedAlbumView.photos)],
++      ),
+       topSliverWidget: const SliverToBoxAdapter(child: MemoryLane()),
+       topSliverWidgetHeight: hasMemories ? 200 : 0,
+       showStorageIndicator: true,
+diff --git a/mobile/lib/presentation/pages/map.page.dart b/mobile/lib/presentation/pages/map.page.dart
+index 0751805..b0d1eb8 100644
+--- a/mobile/lib/presentation/pages/map.page.dart
++++ b/mobile/lib/presentation/pages/map.page.dart
+@@ -3,8 +3,10 @@ import 'dart:async';
+ import 'package:auto_route/auto_route.dart';
+ import 'package:flutter/material.dart';
+ import 'package:immich_mobile/extensions/build_context_extensions.dart';
++import 'package:immich_mobile/presentation/widgets/album/shared_album_filter_button.dart';
+ import 'package:immich_mobile/presentation/widgets/map/map.widget.dart';
+ import 'package:immich_mobile/presentation/widgets/map/map_settings_sheet.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
+ import 'package:maplibre_gl/maplibre_gl.dart';
+ 
+ @RoutePage()
+@@ -45,6 +47,14 @@ class MapPage extends StatelessWidget {
+               ),
+             ),
+           ),
++          const Positioned(
++            right: 76,
++            top: 70,
++            child: Material(
++              shape: CircleBorder(),
++              child: SharedAlbumFilterButton(view: SharedAlbumView.map),
++            ),
++          ),
+           Positioned(
+             right: 20,
+             top: 70,
+diff --git a/mobile/lib/presentation/widgets/album/shared_album_filter_button.dart b/mobile/lib/presentation/widgets/album/shared_album_filter_button.dart
+new file mode 100644
+index 0000000..7ad4b80
+--- /dev/null
++++ b/mobile/lib/presentation/widgets/album/shared_album_filter_button.dart
+@@ -0,0 +1,156 @@
++import 'package:flutter/material.dart';
++import 'package:hooks_riverpod/hooks_riverpod.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
++
++// The custom feature supplies German labels and an English fallback without
++// altering upstream's generated translation catalog.
++String _label(BuildContext context, String de, String en) =>
++    Localizations.localeOf(context).languageCode == 'de' ? de : en;
++
++class SharedAlbumFilterButton extends ConsumerWidget {
++  final SharedAlbumView view;
++  const SharedAlbumFilterButton({super.key, required this.view});
++
++  @override
++  Widget build(BuildContext context, WidgetRef ref) {
++    final ids = ref.watch(sharedAlbumSelectionProvider(view));
++    final albums = ref.watch(sharedAlbumCatalogProvider).valueOrNull ?? [];
++    final count = albums.where((album) => ids.contains(album.id)).length;
++    return IconButton(
++      tooltip: _label(context, 'Geteilte Alben', 'Shared albums'),
++      icon: Badge(isLabelVisible: count > 0, label: Text('$count'), child: const Icon(Icons.filter_alt_outlined)),
++      onPressed: () => showModalBottomSheet<void>(
++        context: context,
++        isScrollControlled: true,
++        showDragHandle: true,
++        builder: (_) => _AlbumFilterSheet(view: view),
++      ),
++    );
++  }
++}
++
++class _AlbumFilterSheet extends ConsumerStatefulWidget {
++  final SharedAlbumView view;
++  const _AlbumFilterSheet({required this.view});
++
++  @override
++  ConsumerState<_AlbumFilterSheet> createState() => _AlbumFilterSheetState();
++}
++
++class _AlbumFilterSheetState extends ConsumerState<_AlbumFilterSheet> {
++  late Set<String> _draft;
++  bool _saving = false;
++
++  @override
++  void initState() {
++    super.initState();
++    _draft = {...ref.read(sharedAlbumSelectionProvider(widget.view))};
++  }
++
++  Future<void> _save(List<({String id, String name})> albums) async {
++    setState(() => _saving = true);
++    try {
++      await ref
++          .read(sharedAlbumSelectionProvider(widget.view).notifier)
++          .save(_draft.intersection(albums.map((album) => album.id).toSet()));
++      if (mounted) {
++        Navigator.of(context).pop();
++      }
++    } catch (_) {
++      if (mounted) {
++        setState(() => _saving = false);
++        ScaffoldMessenger.of(context).showSnackBar(
++          SnackBar(
++            content: Text(_label(context, 'Auswahl konnte nicht gespeichert werden.', 'Could not save selection.')),
++          ),
++        );
++      }
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final catalog = ref.watch(sharedAlbumCatalogProvider);
++    return SafeArea(
++      child: SizedBox(
++        height: MediaQuery.sizeOf(context).height * 0.7,
++        child: Column(
++          children: [
++            Padding(
++              padding: const EdgeInsets.all(16),
++              child: Text(
++                _label(context, 'Geteilte Alben', 'Shared albums'),
++                style: Theme.of(context).textTheme.titleLarge,
++              ),
++            ),
++            Padding(
++              padding: const EdgeInsets.symmetric(horizontal: 16),
++              child: Text(
++                _label(
++                  context,
++                  'Eigene Fotos bleiben sichtbar. Identische Dateien erscheinen einmal.',
++                  'Your own photos remain visible. Identical files appear once.',
++                ),
++              ),
++            ),
++            Expanded(
++              child: catalog.when(
++                loading: () => const Center(child: CircularProgressIndicator()),
++                error: (_, _) => Center(
++                  child: Text(_label(context, 'Alben konnten nicht geladen werden.', 'Could not load albums.')),
++                ),
++                data: (albums) => Column(
++                  children: [
++                    Row(
++                      mainAxisAlignment: MainAxisAlignment.center,
++                      children: [
++                        TextButton(
++                          onPressed: _saving ? null : () => setState(() => _draft = albums.map((a) => a.id).toSet()),
++                          child: Text(_label(context, 'Alle auswählen', 'Select all')),
++                        ),
++                        TextButton(
++                          onPressed: _saving ? null : () => setState(() => _draft = {}),
++                          child: Text(_label(context, 'Keine', 'None')),
++                        ),
++                      ],
++                    ),
++                    Expanded(
++                      child: albums.isEmpty
++                          ? Center(
++                              child: Text(_label(context, 'Keine geteilten Alben vorhanden.', 'No shared albums.')),
++                            )
++                          : ListView.builder(
++                              itemCount: albums.length,
++                              itemBuilder: (_, index) {
++                                final album = albums[index];
++                                return CheckboxListTile(
++                                  title: Text(album.name),
++                                  value: _draft.contains(album.id),
++                                  onChanged: _saving
++                                      ? null
++                                      : (value) => setState(() {
++                                          value == true ? _draft.add(album.id) : _draft.remove(album.id);
++                                        }),
++                                );
++                              },
++                            ),
++                    ),
++                    Padding(
++                      padding: const EdgeInsets.all(16),
++                      child: FilledButton(
++                        onPressed: _saving ? null : () => _save(albums),
++                        child: Text(
++                          _label(context, _saving ? 'Speichern …' : 'Übernehmen', _saving ? 'Saving …' : 'Apply'),
++                        ),
++                      ),
++                    ),
++                  ],
++                ),
++              ),
++            ),
++          ],
++        ),
++      ),
++    );
++  }
++}
+diff --git a/mobile/lib/presentation/widgets/bottom_sheet/map_bottom_sheet.widget.dart b/mobile/lib/presentation/widgets/bottom_sheet/map_bottom_sheet.widget.dart
+index f81992b..817cd78 100644
+--- a/mobile/lib/presentation/widgets/bottom_sheet/map_bottom_sheet.widget.dart
++++ b/mobile/lib/presentation/widgets/bottom_sheet/map_bottom_sheet.widget.dart
+@@ -11,6 +11,7 @@ import 'package:immich_mobile/presentation/widgets/bottom_sheet/base_bottom_shee
+ import 'package:immich_mobile/presentation/widgets/bottom_sheet/general_bottom_sheet.widget.dart';
+ import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
+ import 'package:immich_mobile/presentation/widgets/timeline/timeline.widget.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
+ import 'package:immich_mobile/providers/infrastructure/timeline.provider.dart';
+ import 'package:immich_mobile/providers/user.provider.dart';
+ 
+@@ -55,9 +56,9 @@ class _ScopedMapTimeline extends StatelessWidget {
+           final optionsController = StreamController<TimelineMapOptions>.broadcast();
+           ref.onDispose(optionsController.close);
+ 
+-          var currentOptions = ref.read(mapStateProvider).toOptions();
++          var currentOptions = ref.read(sharedAlbumMapOptionsProvider);
+ 
+-          ref.listen(mapStateProvider.select((state) => state.toOptions()), (_, newOptions) {
++          ref.listen(sharedAlbumMapOptionsProvider, (_, newOptions) {
+             currentOptions = newOptions;
+             optionsController.add(newOptions);
+           });
+diff --git a/mobile/lib/presentation/widgets/map/map.widget.dart b/mobile/lib/presentation/widgets/map/map.widget.dart
+index 97b9e1a..bbdc46b 100644
+--- a/mobile/lib/presentation/widgets/map/map.widget.dart
++++ b/mobile/lib/presentation/widgets/map/map.widget.dart
+@@ -15,6 +15,7 @@ import 'package:immich_mobile/presentation/widgets/bottom_sheet/base_bottom_shee
+ import 'package:immich_mobile/presentation/widgets/bottom_sheet/map_bottom_sheet.widget.dart';
+ import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
+ import 'package:immich_mobile/presentation/widgets/map/map_utils.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
+ import 'package:immich_mobile/providers/routes.provider.dart';
+ import 'package:immich_mobile/utils/async_mutex.dart';
+ import 'package:immich_mobile/utils/debounce.dart';
+@@ -181,6 +182,11 @@ class _MapViewState extends ConsumerState<MapView> {
+ 
+   @override
+   Widget build(BuildContext context) {
++    ref.listen(sharedAlbumMapOptionsProvider, (_, _) => _onEvent(null));
++    ref.listen(sharedAlbumMapRevisionProvider, (_, _) {
++      ref.invalidate(mapMarkerProvider);
++      _onEvent(null);
++    });
+     ref.listen<bool>(isAssetViewerOpenProvider, (previous, current) {
+       if (previous == true && !current) {
+         _debouncer.run(() => setBounds(forceReload: true));
+diff --git a/mobile/lib/providers/infrastructure/map.provider.dart b/mobile/lib/providers/infrastructure/map.provider.dart
+index 7f2fa5b..ee5c75d 100644
+--- a/mobile/lib/providers/infrastructure/map.provider.dart
++++ b/mobile/lib/providers/infrastructure/map.provider.dart
+@@ -2,6 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
+ import 'package:immich_mobile/domain/services/map.service.dart';
+ import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
+ import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
+ import 'package:immich_mobile/providers/infrastructure/timeline.provider.dart';
+ import 'package:immich_mobile/providers/user.provider.dart';
+ 
+@@ -17,7 +18,7 @@ final mapServiceProvider = Provider<MapService>(
+         : [user.id];
+ 
+     final mapFactory = MapFactory(mapRepository: ref.watch(driftProvider).mapRepository);
+-    final mapService = mapFactory.remote(users, ref.watch(mapStateProvider).toOptions());
++    final mapService = mapFactory.remote(users, ref.watch(sharedAlbumMapOptionsProvider));
+     return mapService;
+   },
+   // Empty dependencies to inform the framework that this provider
+diff --git a/mobile/lib/providers/infrastructure/shared_album_filter.provider.dart b/mobile/lib/providers/infrastructure/shared_album_filter.provider.dart
+new file mode 100644
+index 0000000..3289a07
+--- /dev/null
++++ b/mobile/lib/providers/infrastructure/shared_album_filter.provider.dart
+@@ -0,0 +1,94 @@
++import 'package:hooks_riverpod/hooks_riverpod.dart';
++import 'package:immich_mobile/domain/models/map.model.dart';
++import 'package:immich_mobile/domain/models/shared_album_preferences.dart';
++import 'package:immich_mobile/domain/models/store.model.dart';
++import 'package:immich_mobile/infrastructure/repositories/shared_album_queries.dart';
++import 'package:immich_mobile/presentation/widgets/map/map.state.dart';
++import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
++import 'package:immich_mobile/providers/infrastructure/store.provider.dart';
++import 'package:immich_mobile/providers/user.provider.dart';
++import 'package:immich_mobile/utils/async_mutex.dart';
++
++enum SharedAlbumView { photos, map }
++
++final _serverProvider = StreamProvider<String?>((ref) => ref.watch(storeServiceProvider).watch(StoreKey.serverUrl));
++
++final _accountProvider = Provider<String>((ref) {
++  final server =
++      ref.watch(_serverProvider).valueOrNull ?? ref.watch(storeServiceProvider).tryGet(StoreKey.serverUrl) ?? '';
++  final user = ref.watch(currentUserProvider)?.id ?? '';
++  return SharedAlbumPreferences.key(server, user, '');
++});
++
++final _writeMutexProvider = Provider((_) => AsyncMutex());
++
++class SharedAlbumSelection extends FamilyNotifier<Set<String>, SharedAlbumView> {
++  int _generation = 0;
++
++  @override
++  Set<String> build(SharedAlbumView arg) {
++    _generation++;
++    ref.onDispose(() => _generation++);
++    final account = ref.watch(_accountProvider);
++    final store = ref.watch(storeServiceProvider);
++    return SharedAlbumPreferences.read(store.tryGet(StoreKey.sharedAlbumSelections), '$account:${arg.name}');
++  }
++
++  Future<void> save(Set<String> ids) async {
++    final generation = _generation;
++    final account = ref.read(_accountProvider);
++    final store = ref.read(storeServiceProvider);
++    final mutex = ref.read(_writeMutexProvider);
++    final key = '$account:${arg.name}';
++    // Serialize read-modify-write across the two independent views.
++    await mutex.run(() async {
++      final value = SharedAlbumPreferences.write(store.tryGet(StoreKey.sharedAlbumSelections), key, ids);
++      await store.put(StoreKey.sharedAlbumSelections, value);
++    });
++    if (_generation == generation) {
++      state = Set.unmodifiable(ids);
++    }
++  }
++}
++
++final sharedAlbumSelectionProvider = NotifierProvider.family<SharedAlbumSelection, Set<String>, SharedAlbumView>(
++  SharedAlbumSelection.new,
++);
++
++final sharedAlbumCatalogProvider = StreamProvider<List<({String id, String name})>>((ref) {
++  final userId = ref.watch(currentUserProvider)?.id;
++  if (userId == null) {
++    return Stream.value([]);
++  }
++  return SharedAlbumQueries(ref.watch(driftProvider)).watchAlbums(userId);
++});
++
++final sharedAlbumMapOptionsProvider = Provider<TimelineMapOptions>((ref) {
++  final ids = ref.watch(sharedAlbumSelectionProvider(SharedAlbumView.map));
++  return ref
++      .watch(mapStateProvider.select((state) => state.toOptions()))
++      .copyWith(sharedAlbumIds: ids.toList()..sort(), sharedAlbumUserId: ref.watch(currentUserProvider)?.id ?? '');
++});
++
++// A synchronized album/asset/EXIF update can change markers without changing
++// the saved filter. Invalidate the cached marker query in that case as well.
++final sharedAlbumMapRevisionProvider = StreamProvider<int>((ref) {
++  if (ref.watch(sharedAlbumSelectionProvider(SharedAlbumView.map)).isEmpty) {
++    return const Stream.empty();
++  }
++  final db = ref.watch(driftProvider);
++  var revision = 0;
++  return db
++      .customSelect(
++        'SELECT 1',
++        readsFrom: {
++          db.remoteAssetEntity,
++          db.remoteExifEntity,
++          db.remoteAlbumEntity,
++          db.remoteAlbumAssetEntity,
++          db.remoteAlbumUserEntity,
++        },
++      )
++      .watch()
++      .map((_) => ++revision);
++});
+diff --git a/mobile/lib/providers/infrastructure/timeline.provider.dart b/mobile/lib/providers/infrastructure/timeline.provider.dart
+index 667b262..daeb3c4 100644
+--- a/mobile/lib/providers/infrastructure/timeline.provider.dart
++++ b/mobile/lib/providers/infrastructure/timeline.provider.dart
+@@ -4,6 +4,7 @@ import 'package:immich_mobile/domain/services/timeline.service.dart';
+ import 'package:immich_mobile/presentation/widgets/timeline/timeline.state.dart';
+ import 'package:immich_mobile/providers/infrastructure/db.provider.dart';
+ import 'package:immich_mobile/providers/infrastructure/settings.provider.dart';
++import 'package:immich_mobile/providers/infrastructure/shared_album_filter.provider.dart';
+ import 'package:immich_mobile/providers/user.provider.dart';
+ 
+ final timelineArgsProvider = Provider.autoDispose<TimelineArgs>(
+@@ -13,7 +14,14 @@ final timelineArgsProvider = Provider.autoDispose<TimelineArgs>(
+ final timelineServiceProvider = Provider<TimelineService>(
+   (ref) {
+     final timelineUsers = ref.watch(timelineUsersProvider).valueOrNull ?? [];
+-    final timelineService = ref.watch(timelineFactoryProvider).main(timelineUsers);
++    final albumIds = ref.watch(sharedAlbumSelectionProvider(SharedAlbumView.photos));
++    final timelineService = ref
++        .watch(timelineFactoryProvider)
++        .main(
++          timelineUsers,
++          sharedAlbumIds: albumIds.toList()..sort(),
++          sharedAlbumUserId: ref.watch(currentUserProvider)?.id ?? '',
++        );
+     ref.onDispose(timelineService.dispose);
+     return timelineService;
+   },
+diff --git a/mobile/test/medium/repositories/shared_album_queries_test.dart b/mobile/test/medium/repositories/shared_album_queries_test.dart
+new file mode 100644
+index 0000000..e54c349
+--- /dev/null
++++ b/mobile/test/medium/repositories/shared_album_queries_test.dart
+@@ -0,0 +1,131 @@
++import 'package:drift/drift.dart' hide isNotNull, isNull;
++import 'package:flutter_test/flutter_test.dart';
++import 'package:immich_mobile/data/db/main/table/remote/album_user.drift.dart';
++import 'package:immich_mobile/domain/models/album/album.model.dart';
++import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
++import 'package:immich_mobile/domain/models/map.model.dart';
++import 'package:immich_mobile/infrastructure/repositories/shared_album_queries.dart';
++import 'package:intl/date_symbol_data_local.dart';
++import 'package:maplibre_gl/maplibre_gl.dart';
++
++import '../repository_context.dart';
++
++void main() {
++  late MediumRepositoryContext ctx;
++  late SharedAlbumQueries sut;
++
++  setUpAll(initializeDateFormatting);
++  setUp(() {
++    ctx = MediumRepositoryContext();
++    sut = SharedAlbumQueries(ctx.db);
++  });
++  tearDown(() => ctx.dispose());
++
++  Future<void> share(String albumId, String userId) => ctx.db
++      .into(ctx.db.remoteAlbumUserEntity)
++      .insert(
++        RemoteAlbumUserEntityCompanion(
++          albumId: Value(albumId),
++          userId: Value(userId),
++          role: const Value(AlbumUserRole.viewer),
++        ),
++      );
++
++  test('counts and pages share deduplication; private assets do not leak', () async {
++    final me = await ctx.newUser();
++    final other = await ctx.newUser();
++    final album = await ctx.newRemoteAlbum(ownerId: other.id);
++    final secondAlbum = await ctx.newRemoteAlbum(ownerId: other.id);
++    await share(album.id, me.id);
++    await share(secondAlbum.id, me.id);
++    final own = await ctx.newRemoteAsset(ownerId: me.id, checksum: 'same', createdAt: DateTime.utc(2026, 1, 1));
++    final copy = await ctx.newRemoteAsset(ownerId: other.id, checksum: 'same');
++    final shared = await ctx.newRemoteAsset(ownerId: other.id, createdAt: DateTime.utc(2026, 1, 2));
++    final private = await ctx.newRemoteAsset(ownerId: other.id);
++    for (final id in [copy.id, shared.id]) {
++      await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: id);
++      await ctx.newRemoteAlbumAsset(albumId: secondAlbum.id, assetId: id);
++    }
++    final query = sut.main([me.id], me.id, [album.id, secondAlbum.id], .day);
++    final buckets = await query.bucketSource().first;
++    expect(buckets.fold(0, (n, b) => n + b.assetCount), 2);
++    final first = await query.assetSource(0, 1);
++    final next = await query.assetSource(1, 1);
++    expect([...first, ...next].map((a) => a.id), [shared.id, own.id]);
++    expect([...first, ...next].map((a) => a.id), isNot(contains(private.id)));
++  });
++
++  test('synchronized membership removal hides foreign photos even when assets remain cached', () async {
++    final me = await ctx.newUser();
++    final other = await ctx.newUser();
++    final album = await ctx.newRemoteAlbum(ownerId: other.id);
++    await share(album.id, me.id);
++    final asset = await ctx.newRemoteAsset(ownerId: other.id);
++    await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: asset.id);
++    final query = sut.main([me.id], me.id, [album.id], .day);
++    expect(await query.assetSource(0, 10), hasLength(1));
++    await (ctx.db.remoteAlbumUserEntity.delete()
++          ..where((row) => row.albumId.equals(album.id) & row.userId.equals(me.id)))
++        .go();
++    expect(await query.assetSource(0, 10), isEmpty);
++    expect(await query.bucketSource().first, isEmpty);
++    expect(await sut.watchAlbums(me.id).first, isEmpty);
++  });
++
++  test('local copies do not multiply a shared remote asset', () async {
++    final me = await ctx.newUser();
++    final other = await ctx.newUser();
++    final album = await ctx.newRemoteAlbum(ownerId: other.id);
++    await share(album.id, me.id);
++    final asset = await ctx.newRemoteAsset(ownerId: other.id, checksum: 'shared-checksum');
++    await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: asset.id);
++    await ctx.newLocalAsset(checksum: 'shared-checksum');
++    await ctx.newLocalAsset(checksum: 'shared-checksum');
++    final query = sut.main([me.id], me.id, [album.id], .day);
++    final assets = await query.assetSource(0, 10);
++    expect(assets, hasLength(1));
++    expect(assets.single.id, asset.id);
++    expect(assets.single.localId, isNotNull);
++  });
++
++  test('album-only photos remain visible without private stack metadata', () async {
++    final me = await ctx.newUser();
++    final other = await ctx.newUser();
++    final album = await ctx.newRemoteAlbum(ownerId: other.id);
++    await share(album.id, me.id);
++    final asset = await ctx.newRemoteAsset(ownerId: other.id, stackId: 'private-stack');
++    await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: asset.id);
++    final query = sut.main([me.id], me.id, [album.id], .day);
++    final photo = (await query.assetSource(0, 10)).single as RemoteAsset;
++    expect(photo.id, asset.id);
++    expect(photo.stackId, isNull);
++    expect((await query.bucketSource().first).single.assetCount, 1);
++  });
++
++  test('map filters before ranking and marker IDs agree with the timeline', () async {
++    final me = await ctx.newUser();
++    final other = await ctx.newUser();
++    final album = await ctx.newRemoteAlbum(ownerId: other.id);
++    await share(album.id, me.id);
++    // Own copy has no GPS; it must not displace the shared copy with GPS.
++    await ctx.newRemoteAsset(ownerId: me.id, checksum: 'same');
++    final asset = await ctx.newRemoteAsset(ownerId: other.id, checksum: 'same');
++    await ctx.newRemoteAlbumAsset(albumId: album.id, assetId: asset.id);
++    await ctx.db.customStatement('INSERT INTO remote_exif_entity(asset_id, latitude, longitude) VALUES (?, ?, ?)', [
++      asset.id,
++      48.3,
++      10.9,
++    ]);
++    final options = TimelineMapOptions(
++      bounds: LatLngBounds(southwest: const LatLng(48, 10), northeast: const LatLng(49, 11)),
++      sharedAlbumIds: [album.id],
++      sharedAlbumUserId: me.id,
++    );
++    final query = sut.map([me.id], options, .month);
++    final markers = await sut.markers([me.id], options, options.bounds);
++    final assets = await query.assetSource(0, 10);
++    expect(markers.map((m) => m.assetId), [asset.id]);
++    expect(assets.map((a) => a.id), [asset.id]);
++    expect((await query.bucketSource().first).single.assetCount, 1);
++  });
++}
+diff --git a/mobile/test/unit/shared_album_preferences_test.dart b/mobile/test/unit/shared_album_preferences_test.dart
+new file mode 100644
+index 0000000..f992a7d
+--- /dev/null
++++ b/mobile/test/unit/shared_album_preferences_test.dart
+@@ -0,0 +1,21 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:immich_mobile/domain/models/shared_album_preferences.dart';
++
++void main() {
++  test('selections survive serialization and stay separate by server, user and view', () {
++    final photos = SharedAlbumPreferences.key('server-a', 'user-a', 'photos');
++    final map = SharedAlbumPreferences.key('server-a', 'user-a', 'map');
++    var value = SharedAlbumPreferences.write(null, photos, {'album-a'});
++    value = SharedAlbumPreferences.write(value, map, {'album-b'});
++    expect(SharedAlbumPreferences.read(value, photos), {'album-a'});
++    expect(SharedAlbumPreferences.read(value, map), {'album-b'});
++    expect(SharedAlbumPreferences.read(value, SharedAlbumPreferences.key('server-b', 'user-a', 'photos')), isEmpty);
++    expect(SharedAlbumPreferences.read(value, SharedAlbumPreferences.key('server-a', 'user-b', 'photos')), isEmpty);
++  });
++
++  test('missing or malformed storage falls back to no added albums', () {
++    for (final value in [null, '{broken', '[]', '{"key":3}']) {
++      expect(SharedAlbumPreferences.read(value, 'key'), isEmpty);
++    }
++  });
++}
