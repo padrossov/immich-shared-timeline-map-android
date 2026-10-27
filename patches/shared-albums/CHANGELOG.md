@@ -62,6 +62,6 @@
 ### Fork und Immich2
 
 - Getesteten Patch als echte Code-Commits im Branch `shared-albums` auf v3.3.5 übernommen.
-- Anzeigename auf Immich2 geändert; Paketkennung für Aktualisierungen beibehalten.
+- Anzeigename auf Immich geändert; Paketkennung für Aktualisierungen beibehalten.
 - Nutzer meldete die bisherige APK als erwartungsgemäß funktionierend.
 - Neuer Build verwendet den Fork direkt und prüft den bisherigen Signaturfingerabdruck.

@@ -1,4 +1,4 @@
-name: Build Immich2 release APK
+name: Build Immich shared-album release APK
 on:
   workflow_dispatch:
     inputs:
@@ -116,18 +116,18 @@ jobs:
       - name: Record APK checksum and development certificate
         working-directory: immich/mobile/build/app/outputs/flutter-apk
         run: |
-          mv app-release.apk Immich2-3.3.5-arm64-release.apk
-          sha256sum Immich2-3.3.5-arm64-release.apk | tee SHA256SUMS
+          mv app-release.apk Immich-3.3.5-shared-albums-arm64-release.apk
+          sha256sum Immich-3.3.5-shared-albums-arm64-release.apk | tee SHA256SUMS
           sdk_build_tools=$(find "${ANDROID_HOME:?}/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
           test -x "$sdk_build_tools/apksigner"
           set -o pipefail
-          "$sdk_build_tools/apksigner" verify --verbose --print-certs Immich2-3.3.5-arm64-release.apk | tee signing-certificate.txt
+          "$sdk_build_tools/apksigner" verify --verbose --print-certs Immich-3.3.5-shared-albums-arm64-release.apk | tee signing-certificate.txt
       - name: Upload release APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: Immich2-3.3.5-arm64-release
+          name: Immich-3.3.5-shared-albums-arm64-release
           path: |
-            immich/mobile/build/app/outputs/flutter-apk/Immich2-3.3.5-arm64-release.apk
+            immich/mobile/build/app/outputs/flutter-apk/Immich-3.3.5-shared-albums-arm64-release.apk
             immich/mobile/build/app/outputs/flutter-apk/SHA256SUMS
             immich/mobile/build/app/outputs/flutter-apk/signing-certificate.txt
           if-no-files-found: error

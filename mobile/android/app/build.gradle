@@ -72,7 +72,7 @@ android {
       if (System.getenv("IMMICH_SHARED_ALBUMS_BUILD") == "1") {
         applicationIdSuffix ".sharedalbums"
         versionNameSuffix "-sharedalbums"
-        resValue "string", "app_name", "Immich2"
+        resValue "string", "app_name", "Immich"
       }
 
       def prNumber = System.getenv("PR_NUMBER")
