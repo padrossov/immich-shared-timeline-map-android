@@ -42,9 +42,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Require the existing signing key
+      - name: Restore and verify the release signing key
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 || secrets.IMMICH2_KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             mkdir -p "$HOME/.android"
@@ -52,11 +53,15 @@ jobs:
             chmod 600 "$HOME/.android/debug.keystore"
           fi
           test -s "$HOME/.android/debug.keystore" || {
-            echo "Signing secret ANDROID_KEYSTORE_BASE64 is missing in this fork. Configure the existing keystore; no replacement key is generated." >&2
+            echo "Signing secret ANDROID_RELEASE_KEYSTORE_BASE64 is missing in this fork." >&2
             exit 1
           }
+          if ! [[ "$EXPECTED_CERT_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Configure the repository variable ANDROID_RELEASE_CERT_SHA256." >&2
+            exit 1
+          fi
           keytool -exportcert -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey |
-            sha256sum | awk '{print $1}' | grep -Fx '154199b39a2bbdc1d3bba4996b430639b23035005f960d007accb469aa7afc79'
+            sha256sum | awk '{print $1}' | grep -Fx "$EXPECTED_CERT_SHA256"
       - name: Resolve build metadata
         id: meta
         working-directory: immich
@@ -130,9 +135,10 @@ jobs:
         run: |
           set -o pipefail
           bash immich/patches/shared-albums/build.sh immich apk 2>&1 | tee APK-build.log
-      - name: Record APK checksum and development certificate
+      - name: Record APK checksum and release certificate
         env:
           APK_FILENAME: ${{ steps.meta.outputs.filename }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_RELEASE_CERT_SHA256 }}
         working-directory: immich/mobile/build/app/outputs/flutter-apk
         run: |
           mv app-release.apk "$APK_FILENAME"
@@ -141,6 +147,7 @@ jobs:
           test -x "$sdk_build_tools/apksigner"
           set -o pipefail
           "$sdk_build_tools/apksigner" verify --verbose --print-certs "$APK_FILENAME" | tee signing-certificate.txt
+          grep -Fx "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT_SHA256" signing-certificate.txt
       - name: Upload release APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -209,7 +216,7 @@ jobs:
           notes = (
               f"Immich {os.environ['APP_VERSION']} mit Albumfiltern für Zeitleiste und Karte.\n\n"
               "ARM64-Release-APK. Anzeigename: Immich. Paketkennung: app.alextran.immich.sharedalbums.\n"
-              "Signierung mit dem bisherigen Zertifikat; bestehende Testinstallation kann aktualisiert werden.\n\n"
+              "Ein APK-Update setzt dieselbe Signatur wie bei der installierten App voraus. Bei abweichender Signatur ist eine Neuinstallation nötig.\n\n"
               f"Quellcode: {os.environ['SOURCE_SHA']}\nBuild und Tests: {os.environ['BUILD_URL']}\n"
               "APK-Prüfsumme und Signaturdaten stehen als eigene Downloads bereit.\n"
           )
