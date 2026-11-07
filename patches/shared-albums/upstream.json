@@ -1,9 +1,9 @@
 {
   "repository": "https://github.com/immich-app/immich",
-  "tag": "v3.3.5",
-  "commit": "8303cb117e197c700332b33b61b45314c9cc5bb4",
+  "tag": "v3.3.6",
+  "commit": "587f549f46f1cd1822a06e16dcccecef04ea4565",
   "flutter": "3.47.2",
-  "status": "fork_release_built_and_signature_verified",
+  "status": "patch_application_verified",
   "implemented": true,
   "validated_versions": [
     {
@@ -24,7 +24,6 @@
       "device_test": "not_run_for_new_apk"
     }
   ],
-  "sql_checks_passed": 18,
   "android_application_id": "app.alextran.immich.sharedalbums",
   "android_display_name": "Immich",
   "signing": "explicit CI development keystore, cached; caller-provided release keystore takes precedence",

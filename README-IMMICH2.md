@@ -21,7 +21,7 @@ Es muss der vorhandene Schlüssel aus dem bisherigen ImmichApk-Build sein: Alias
 
 ## Versionen aktualisieren
 
-`shared-albums` enthält den produktiven App-Code samt Feature-Commits auf Basis von v3.3.5. Neue stabile Immich-Tags zuerst in einen Arbeitsbranch davon mergen, Konflikte lösen und Werkzeugversionen im Workflow prüfen. Danach in `shared-albums` übernehmen und den Build prüfen.
+`shared-albums` enthält den produktiven App-Code samt Feature-Commits auf Basis von v3.3.6. Neue stabile Immich-Tags zuerst in einen Arbeitsbranch davon mergen, Konflikte lösen und Werkzeugversionen im Workflow prüfen. Danach in `shared-albums` übernehmen und den Build prüfen.
 
 `main` enthält die Workflow-Einstiege für GitHubs Actions-Oberfläche und ansonsten die Upstream-Linie. `main` allein zu synchronisieren aktualisiert den Feature-Branch nicht. Die APK wird aus `source_ref` bzw. bei einem Push aus dem konkreten Feature-Commit gebaut; der veröffentlichte Release-Tag verweist auf genau diesen Quellcommit.
 

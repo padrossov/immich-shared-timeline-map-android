@@ -1,6 +1,6 @@
 # Wartung im Fork
 
-Im Branch `shared-albums` liegen die Änderungen als echte Git-Commits auf v3.3.5. Für neue Versionen bevorzugt einen Arbeitsbranch davon anlegen und den gewünschten stabilen Upstream-Tag mergen. Konflikte auflösen, Werkzeugversionen prüfen und Build/Tests ausführen. Anschließend die Patchdatei gegen die neue Basis exportieren und ihre Anwendbarkeit auf einem sauberen Checkout prüfen. Die Patchdatei wird im Fork-Build nicht erneut angewendet.
+Im Branch `shared-albums` liegen die Änderungen als echte Git-Commits auf v3.3.6. Für neue Versionen bevorzugt einen Arbeitsbranch davon anlegen und den gewünschten stabilen Upstream-Tag mergen. Konflikte auflösen, Werkzeugversionen prüfen und Build/Tests ausführen. Anschließend die Patchdatei gegen die neue Basis exportieren und ihre Anwendbarkeit auf einem sauberen Checkout prüfen. Die Patchdatei wird im Fork-Build nicht erneut angewendet.
 
 Der Build wird zur Nutzung des vorhandenen Signierungscaches aktuell im Repository ImmichApk ausgelöst und ruft den Workflow aus diesem Fork mit festem Commit auf. Nach einem Versionsupdate dessen Workflow-Referenz und `source_ref` auf den neuen geprüften Commit setzen. Anleitung und Signierung: [README-IMMICH2.md](../../README-IMMICH2.md).
 

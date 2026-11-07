@@ -8,7 +8,7 @@ Der Feature-Code ist im Fork-Branch `shared-albums` bereits angewendet und commi
 - `REQUIREMENTS.md`, `CODE_MAP.md`: Anforderungen und Codestellen.
 - `PORTING.md`: Übertragung auf neue Versionen.
 - `VALIDATION.md`: historische Build-Nachweise und manuelle Prüffälle.
-- `release.json`: verifizierte Metadaten des aktuellen Fork-Release-Builds mit Anzeigename Immich.
+- `release.json`: verifizierte Metadaten des verifizierten Fork-Release-Builds für v3.3.5 mit Anzeigename Immich.
 - `verify_sql.py`: 18 SQL-Regressionstests.
 - `build.sh`: Codegenerierung, Analyse, Flutter-Tests und ARM64-Release-Build.
 

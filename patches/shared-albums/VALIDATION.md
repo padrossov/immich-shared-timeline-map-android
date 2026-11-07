@@ -1,6 +1,8 @@
 # Validierung
 
-Status: Aktueller Release-Build und Signaturprüfung erfolgreich. Flutter-Analyse ohne Probleme, 15 Flutter-Tests und 18 SQL-Prüfungen bestanden. Die folgende vollständige Prüfliste enthält auch manuelle Fälle; ein Android-Gerätetest steht noch aus.
+Für v3.3.6 wurde die Patchanwendung auf einem sauberen Checkout geprüft. Flutter-Analyse, Release-Build und Signaturprüfung für v3.3.6 stehen aus.
+
+Status für v3.3.5: Release-Build und Signaturprüfung erfolgreich. Flutter-Analyse ohne Probleme, 15 Flutter-Tests und 18 SQL-Prüfungen bestanden. Die folgende vollständige Prüfliste enthält auch manuelle Fälle; ein Android-Gerätetest steht noch aus.
 
 ## Prüffälle je Zielversion
 
