@@ -11,13 +11,13 @@
 
 Der Anzeigename ist **Immich**, die Paketkennung bleibt `app.alextran.immich.sharedalbums`. Die offizielle Play-Store-App kann parallel installiert bleiben.
 
-## Einmalige Signierungseinrichtung
+## Signierung der Release-APK
 
-Für neue Builds muss im Fork unter **Settings → Secrets and variables → Actions → New repository secret** das Secret **ANDROID_KEYSTORE_BASE64** mit der Base64-Kodierung des bisherigen Keystores eingerichtet werden. Der frühere Name `IMMICH2_KEYSTORE_BASE64` wird ebenfalls akzeptiert.
+Ab v3.3.6 verwendet der Fork einen eigenen dauerhaften Signaturschlüssel. Der Workflow liest den Keystore aus dem Actions-Secret `ANDROID_RELEASE_KEYSTORE_BASE64` im Fork und prüft das Zertifikat vor dem Build sowie an der fertigen APK.
 
-Es muss der vorhandene Schlüssel aus dem bisherigen ImmichApk-Build sein: Alias `androiddebugkey`, bisherige Keystore-/Schlüsselpasswörter und Zertifikat SHA-256 `154199b39a2bbdc1d3bba4996b430639b23035005f960d007accb469aa7afc79`. Der Workflow prüft den Fingerabdruck vor dem Build. Ohne den Schlüssel stoppt er, statt eine nicht aktualisierbare APK auszugeben. Der private Schlüssel wird nicht in Git, öffentliche Caches oder Release-Downloads aufgenommen.
+Den SHA-256-Fingerabdruck des öffentlichen Zertifikats als Repository-Variable `ANDROID_RELEASE_CERT_SHA256` hinterlegen.
 
-**Stand dieser Einrichtung:** Der Workflow ist vorbereitet; die Übernahme des Secrets aus dem alten Repository ist noch erforderlich. Die bereits geprüfte APK ist unabhängig davon als Release veröffentlicht.
+Beim Umstieg von der früheren Signatur muss die bisherige gepatchte App einmal deinstalliert werden. Spätere Builds mit diesem Zertifikat lassen sich als Update installieren.
 
 ## Versionen aktualisieren
 
